@@ -1,29 +1,18 @@
-OpenFire Processor Version 0.3 Beta
+OpenIce Processor Version 0.1 Beta
 
-This initial release of the OpenFire processor includes the Verilog RTL source
-code with basic integration into the Xilinx EDK flow.  Version 0.3 addresses 
-two bugs identified in the version 0.2 code.  One limited the addressible
-memory to a maximum of 1/4th the expected value while the other resulted
-in occassional incorrect results of the CMP instruction.
+OpenIce Processor is a VHDL implementation of OpenFire processor , a shrink version of Xilinx MicroBlaze developed by Craven at Virginia Tech. 
 
-This initial release contains everything needed to create a simple OpenFire
-system running the Dhrystone benchmark.  The system uses a MicroBlaze as a 
-master node to interface with the outside world through a UART.  (The OpenFire
-does not currently have an OPB interface and thus must use another processor
-like the MicroBlaze to use EDK peripherals.)  The master MicroBlaze controls
-the slave OpenFire processor that runs the benchmark.
-
-For updates see:
+For OpenFire see:
 http://www.ccm.ece.vt.edu/~scraven/
-
 For licence information see:
 http://www.opensource.org/licenses/mit-license.php
 
 Included Directories:
-docs/		contains OpenFire_v0.3.doc Word file
-pcores/		includes Verilog HDL and sundry files needed for EDK to find core 
-utils/		contains various scripts for compiling OpenFire code and loading
-			BRAMs and a C simulator
+docs/		Introduction to OpenFire
+pcores/		Verilog sources of OpenFire 
+                VHDL sources of OpenIce 
+utils/		Scripts for compiling OpenFire code and loading
+		BRAMs and a C simulator
 code/		Dhrystone 2.1 benchmark C code and C simulator code
 
 Included files:
