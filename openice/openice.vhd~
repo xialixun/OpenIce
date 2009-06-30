@@ -1,0 +1,300 @@
+-------------------------------------------------------------------------------
+--Module: OpenIce Soft Processor
+--Description: Two-process implementation of a shrink MicroBlaze in VHDL
+--Email : lixun@student.chalmers.se
+--Version : Alpha
+--History:
+--Revision:
+
+--Copyright (c) 2009 Lixun Xia
+--Permission is hereby granted, free of charge, to any person obtaining a copy of
+--this software and associated documentation files (the "Software"), to deal in 
+--the Software without restriction, including without limitation the rights to 
+--use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies 
+--of the Software, and to permit persons to whom the Software is furnished to do 
+--so, subject to the following conditions:
+
+--The above copyright notice and this permission notice shall be included in all
+--copies or substantial portions of the Software.
+
+--THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+--IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+--FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+--AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
+--LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+--OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
+--SOFTWARE.
+-------------------------------------------------------------------------------
+
+
+
+
+-------------------------------------------------------------------------------
+--Configuration
+-------------------------------------------------------------------------------
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+package configuration is
+
+  constant A_SPACE : natural := 12;      -- addressable space measured in word
+  constant WORD : natural := 32;        -- instruction length will be WORD
+  constant H_WORD : natural := 16;       --data length can be H_WORD or WORD 
+  constant BYTE : natural := 8;          --or even BYTE
+  constant D_WIDTH : natural := WORD;    --length for data path, WORD or H_WORD
+  constant INC : unsigned(A_SPACE+1 downto 0) := to_unsigned(4,A_SPACE+2);  --linear inc of PC
+
+end configuration;
+
+
+
+
+-------------------------------------------------------------------------------
+-- interface-definition package
+-------------------------------------------------------------------------------
+library ieee;
+use ieee.std_logic_1164.all;
+use work.configuration.all;  -- all generics and constants
+
+package interface is
+  -- type definitions for fetch stage
+  type fet_in is record
+                     rst  : std_logic;  -- synchronous reset
+                     sta  : std_logic;  -- stall enable for this stage
+                     btk : std_logic;  -- branch-taken enable
+                     bpc : std_logic_vector(A_SPACE+1 downto 0);  -- PC value to be loaded when branch
+                     i : std_logic_vector(WORD-1 downto 0);  -- instruction out of mem
+                   end record;
+  type fet_out is record  
+                      ia     : std_logic_vector(WORD-1 downto 0);  -- instruction address measured in word
+                      i      : std_logic_vector(WORD-1 downto 0);  -- instruction
+                      dpc    : std_logic_vector(A_SPACE+1 downto 0);  --PC for-decode-stage
+                    end record;
+  type fet_reg is record  
+                      fpc : std_logic_vector(A_SPACE+1 downto 0);  -- PC state for fetch stage
+                      dpc : std_logic_vector(A_SPACE+1 downto 0);  -- PC state for decode stage
+                      i   : std_logic_vector(WORD-1 downto 0);  -- result of imem access
+                    end record;
+
+  -- type definitions for decode stage
+  type dec_in is record
+                     rst    : std_logic;
+                     sta    : std_logic;
+                     dpc : std_logic_vector(A_SPACE+1 downto 0);  -- PC for decode-stage
+                     i   : std_logic_vector(31 downto 0);
+                     fl    : std_logic;  -- flush the pipeline if a branch is taken
+                          end record;
+  type dec_out is record
+                             rA          : std_logic_vector(4 downto 0);  --address
+                             rB          : std_logic_vector(4 downto 0);
+                             rD          : std_logic_vector(4 downto 0);
+                             imme            : std_logic_vector(D_WIDTH-1 downto 0);
+                             epc          : std_logic_vector(A_SPACE+1 downto 0);--PC for exe stage
+                             aALU     : std_logic_vector(1 downto 0);
+                             bALU     : std_logic_vector(1 downto 0);
+                             cALU     : std_logic_vector(1 downto 0);  
+                             fnALU        : std_logic_vector(3 downto 0);
+                             fnCOM        : std_logic_vector(2 downto 0);  --comparator
+                             weLD            : std_logic;  -- we for LOAD 
+                             weST            : std_logic;  -- we for STORE
+                             weALUB          : std_logic;  -- we for ALU Branch
+			     inRF       : std_logic_vector(2 downto 0);  -- reg file input selection
+			     inDM     : std_logic_vector(1 downto 0);  -- input selection for data memory
+                             dy          : std_logic;  --delay bit
+                             upC           : std_logic;  --update carry
+                             bi       : std_logic;    --branch instruction
+                             fslG            : std_logic;  --FSL Get
+                             fslC            : std_logic;  --FSL Control
+			     fslB            : std_logic;  --FSL Blocking
+                             fslV            : std_logic;  --FSL Valid
+                           end record;
+  type dec_reg is record             -- register output and imm values
+                       imme          : std_logic_vector(D_WIDTH-1 downto 0);
+                       epc             : std_logic_vector(A_SPACE+1 downto 0);
+                       aALU     : std_logic_vector(1 downto 0);
+                       bALU     : std_logic_vector(1 downto 0);
+                       cALU     : std_logic_vector(1 downto 0);
+                       fnALU        : std_logic_vector(3 downto 0);
+                       fnCOM : std_logic_vector(2 downto 0);
+                       weLD            : std_logic;
+                       weST           : std_logic;
+                       weALUB      : std_logic;
+                       inRF  : std_logic_vector(2 downto 0);
+                       inDM     : std_logic_vector(1 downto 0);
+                       rA          : std_logic_vector(4 downto 0);
+                       rB          : std_logic_vector(4 downto 0);
+                       rD          : std_logic_vector(4 downto 0);
+                       upC       : std_logic;
+                       dy          : std_logic;
+                       bi       : std_logic;
+                       fslG            : std_logic;
+                       fslC        : std_logic;
+                       fslB       : std_logic;
+                       fslV        : std_logic;
+                       imm          : std_logic_vector(H_WORD-1 downto 0);  -- imm value from IMM instruction
+                       immV          : std_logic;  --imm instruction valid
+                     end record;
+end package interface;
+
+
+
+--Components begin from here
+-------------------------------------------------------------------------------
+--Fetch module
+-------------------------------------------------------------------------------
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+use work.interface.all;
+use work.configuration.all;
+
+entity fetch is
+  port (
+    clk     : in std_logic;               
+    fi  : in fetch_in_type;
+    fo : out fetch_out_type);
+end fetch;
+
+architecture structural of fetch is
+  signal fr : fet_reg := ((others=>'0'), (others=>'0'), '1' & (others=>'0'));--init as NOP
+  signal fri : fet_reg;  
+begin  -- structural
+  
+  seq:process(clk)
+    begin
+      if rising_edge(clk) then fr <= fri; end if;
+    end process seq;
+
+  com:process(fi,fr)
+    variable frv : fet_reg;
+    begin
+      --state update of fetch stage
+      frv := fr;
+      if fi.rst='1' then
+        frv.fpc := (others=>'0'); frv.dpc := (others=>'0'); frv.i := '1' & (others=>'0');
+      end if;
+      if fi.rst='0' and fi.sta='0' then
+        if fi.btk='1' then frv.fpc := fi.bpc
+        else frv.fpc := std_logic_vector(unsigned(fr.fpc)+INC);
+        end if;
+        frv.dpc := fr.fpc; frv.i := fi.i;
+      end if;
+      fri <= frv;
+      fo.ia <= (others=>'0') & fr.fpc(A_SPACE+1 downto 2); fo.dpc <= fr.dpc; fo.i <= fr.i;      
+    end process com;
+      
+end structural;
+
+
+
+-------------------------------------------------------------------------------
+--decode module
+-------------------------------------------------------------------------------
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+use work.interface.all;
+use work.configuration.all;
+
+entity decode is  
+  port (
+    clk   : in std_logic;
+    di  : in  dec_in;
+    do : out dec_out);
+end decode;
+
+architecture structural of decode is
+  signal dr : dec_reg := ();  --need init here for simulation
+  signal dri : dec_reg;
+begin  -- structural
+
+  seq:process(clk)
+    begin
+      if rising_edge(clk) then dr <= dri; end if;
+    end process seq;
+
+  com:process(di,dr)
+    variable drv : dec_reg;
+    variable s : dec_alias;  --auxiliary sub-decoding variable for alias purpose
+    begin
+     
+      --instruction fields
+      s.op := di.i(31 downto 26);  --6-bit opcode aspect
+      s.rD := di.i(25 downto 21); s.rA := di.i(20 downto 16); s.rB := di.i(15 downto 11); --addr of rA,rB,rD in RF 
+      s.bc := di.i(23 downto 21);  --branch compare
+      s.imm := di.i(15 downto 0); --16-bit imm value
+      s.ws := di.i(27 downto 26);  --word size
+      --special opcode bits 
+      s.b := di.i(31 downto 30) & di.i(28 downto 26); --unconditional/conditional branch sub region
+      s.imb := di.i(29); --imm bit
+      s.cmb := di.i(0);  --compare bit for CMP/CMPU instruction
+      s.cab := di.i(27); --use carry bit
+      s.kb := di.i(28);  --if 1, do not update carry bit in MSR
+      s.dbu := di.i(20); --delay bit for unconditional branch
+      s.dbc := di.i(25); --delay bit for conditional branch
+      s.aa := di.i(19);  --absolute addressing for branch
+      s.lb := di.i(18);  --link bit, stores PC in rD for branch
+      s.ub := di.i(1); --unsigned bit for compare instruction
+      s.fslnb := di.i(14); --fsl nblock
+      s.fslct := di.i(13); --fsl control
+      s.fslgp := di.i(15);  --fsl get/put
+
+      --derive next state
+      drv := dr;
+      --reset or flush situations
+      if di.rst='1' or di.fl='1' then
+        if di.rst='1' then drv.epc := others=>'0';
+        else drv.epc := di.dpc;
+        end if;
+        drv.upC := '0';
+        drv.rA := others=>'0'; drv.rB := others=>'0'; drv.rD := others=>'0';
+        drv.imme := others=>'0';
+        drv.aALU := others=>'0'; drv.bALU := others=>'0'; drv.cALU := others=>'0';
+        drv.dy := '0'; drv.bi := '0';
+        drv.fnALU := ALU_LOGIC_OR;  --execute NOP on reset
+        drv.fnCOM := others=>'0';
+        drv.weLD := '0'; drv.weST := '0'; drv.weALUB := '0';
+        drv.inRF := RF_ZERO;  --write 0 to R0 on reset
+        drv.inDM := others=>'0';
+        drv.imm := others=>'0'; drv.immV := '0';
+        drv.fslC := '0'; drv.fslG := '0'; drv.fslB := '0'; drv.fslV := '0';
+      end if;
+      --non-stall situations, set default first
+      if di.rst='0' and di.fl='0' and di.sta ='0' then
+        drv.bi := '0';
+        drv.epc := di.dpc;
+	if s.b="10110" or s.b="10101" then --true for unconditional branch
+	  if s.op=RET then drv.dy := '1'; else drv.dy := s.dbu; end if;
+        elsif s.b="10111" then drv.dy := s.dbc; else drv.dy := '0'; 
+        end if;
+	drv.weLD := '0'; drv.weST := '0'; drv.upC := '0'; 
+	drv.rA := s.rA; drv.rB := s.rB; drv.rD := s.rD;
+	if dr.immV='1' then drv.imme := dr.imm & s.imm; else drv.imme := (others=>di.i(15)) & s.imm; end if;
+        drv.weALUB := '1';  --most of the instructions write to register file
+	drv.inRF := RF_ALU_RESULT;
+	drv.aALU := ALUA_RA;
+	if s.imb='1' then drv.bALU := ALUB_IMM; else drv.bALU := ALUB_RB; end if;
+	drv.cALU := ALUC_ZERO;
+	drv.fnALU := ALU_ADD;
+	drv.fnCOM := '0'; 
+	drv.immV := '0';
+	drv.fslC := '0'; drv.fslG := '0'; drv.fslB := '0'; drv.fslV := '0';
+        --decode in case statement
+	case s.op is
+		when ADD => if s.cab='1' then drv.cALU := ALUC_CARRY; else drv.cALU := ALUC_ZERO; end if;
+		            drv.upC := not s.kb;
+	        when SUBTRACT => drv.upC := not s.kb;
+		            if s.ub='1' and s.cmb='1' then drv.fnALU := ALU_COMPARE_UNS; drv.fnCOM := CMP_DUAL_INPUTS;
+		            elsif s.cmb='1' then drv.fnALU := ALU_COMPARE;
+		            else drv.fnALU := ALU_ADD; drv.aALU := ALUA_RA_BAR; 
+				 if s.cab='1' then drv.cALU := ALUC_CARRY; else drv.cALU := ALUC_ONE; end if;
+		            end if;
+
+      end if;
+    end process com;
+
+end structural;
+
+
+
+

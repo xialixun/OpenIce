@@ -1,0 +1,94 @@
+-------------------------------------------------------------------------------
+--Fetch stage of OpenIce
+--xialixun@gmail.com
+--v.alpha
+--Note:
+--control signals with active low will have a "_n" as a suffix
+-------------------------------------------------------------------------------
+
+--interface definition package
+library ieee;
+use ieee.std_logic_1164.all;
+use work.configuration.all;             --all generics and constants
+
+package fetch_interface_pkg is
+  type fetch_ports_in is record
+        stall : std_logic;
+        branch_taken : std_logic;  -- strobe for latching in new pc
+        branch_pc : std_logic_vector(ADDR_SPACE+1 downto 0);
+        idata : std_logic_vector(31 downto 0);
+  end record;
+  type fetch_ports_out is record
+        imem_addr : std_logic_vector(31 downto 0);
+        instruction : std_logic_vector(31 downto 0);
+        decode_pc   : std_logic_vector(ADDR_SPACE+1 downto 0);
+  end record;
+end package fetch_interface_pkg;
+
+--fetch stage
+library ieee;
+use ieee.std_logic_1164.all;
+use work.fetch_interface_pkg.all;
+use work.configuration.all;
+
+entity fetch is
+  port (
+    clk : in std_logic;               
+    rst : in std_logic;
+    fetch_in : in fetch_ports_in;
+    fetch_out : out fetch_ports_out);              
+end fetch;
+
+architecture structural of fetch is
+
+begin  -- structural
+
+  
+
+end structural;
+
+
+module openfire_fetch(
+	stall, clock, reset, 				// top level
+	branch_taken, pc_branch, idata,			// inputs
+	instruction, imem_addr, pc_decode);		// outputs
+	
+// From top level -- all active high unless otherwise noted
+input		stall;
+input		reset;
+input		clock;
+
+// From EXECUTE module
+input 			branch_taken;	// strobe for latching in new pc
+// PCs are A_SPACE + 1 because lower 2 bits are always zero
+//	A_SPACE is addr space in words ... 2^A_SPACE * 4 = # Bytes
+input 	[`A_SPACE+1:0]	pc_branch;	// PC of branch
+
+// From Instr Mem
+input 	[31:0]		idata;
+
+output 	[31:0]		imem_addr;
+output	[`A_SPACE+1:0]	pc_decode;
+output 	[31:0]		instruction;
+
+reg	[`A_SPACE+1:0]	pc_fetch;	// PCs only need to contain addressable instr mem
+reg	[`A_SPACE+1:0]	pc_decode;	// delayed PC for DECODE
+reg	[31:0]		instruction;
+
+assign imem_addr[31:`A_SPACE] = 0;	// pad unused bits with zeros, 
+assign imem_addr[`A_SPACE-1:0] = pc_fetch[`A_SPACE+1:2];	// ignore lower 2 LSBs
+
+always@(posedge clock)
+	if (reset)
+	begin
+		pc_fetch 	<= 0;
+		pc_decode 	<= 0;
+		instruction 	<= 32'h80000000;		// Execute NoOp on reset
+	end
+	else if (!stall)
+	begin
+		pc_fetch 	<= branch_taken ? pc_branch : pc_fetch + 4;	// update PC to branch or increment pc
+		pc_decode 	<= pc_fetch;
+		instruction 	<= idata;
+	end
+endmodule
